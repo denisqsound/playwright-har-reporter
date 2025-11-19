@@ -435,7 +435,7 @@ ${report.traffic ? `
 <h2>Traffic Details</h2>
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
 <div>
-<h3>↑ Sent</h3>
+<h3>Sent (Upload)</h3>
 <div class="metric">
 <div class="metric-value">${(report.traffic.sent.total / 1024).toFixed(2)} KB</div>
 <div class="metric-label">Total Sent</div>
@@ -450,7 +450,7 @@ ${report.traffic ? `
 </div>
 </div>
 <div>
-<h3>↓ Received</h3>
+<h3>Received (Download)</h3>
 <div class="metric">
 <div class="metric-value">${(report.traffic.received.total / 1024).toFixed(2)} KB</div>
 <div class="metric-label">Total Received</div>
@@ -585,8 +585,11 @@ Threshold: ${v.threshold}, Actual: ${v.actual.toFixed(2)}
             totalRequests: entries.length,
             totalTime: totalTime,
             totalSize: entries.reduce((sum, e) => {
-                const size = e.response?.bodySize;
-                // Ignore negative values (-1 means "unknown" in HAR spec)
+                let size = e.response?.bodySize;
+                // Fallback: calculate from content only if bodySize is -1 (unknown)
+                if (size === -1 || size === undefined) {
+                    size = this.calculateBodySizeFromContent(e.response?.content);
+                }
                 return sum + (size && size > 0 ? size : 0);
             }, 0),
             failedRequests: entries.filter(e => e.response?.status >= 400).length,
@@ -595,6 +598,69 @@ Threshold: ${v.threshold}, Actual: ${v.actual.toFixed(2)}
             percentile95: this.calculatePercentile(times, 95),
             percentile99: this.calculatePercentile(times, 99)
         };
+    }
+
+    /**
+     * Calculates headers size from headers array when HAR doesn't provide it
+     */
+    private calculateHeadersSizeFromArray(headers: any[]): number {
+        if (!headers || headers.length === 0) return 0;
+
+        // Calculate size: "name: value\r\n" for each header + final "\r\n"
+        let size = 0;
+        headers.forEach(header => {
+            if (header.name && header.value !== undefined) {
+                // name + ": " + value + "\r\n"
+                size += header.name.length + 2 + String(header.value).length + 2;
+            }
+        });
+        // Add final "\r\n"
+        size += 2;
+
+        return size;
+    }
+
+    /**
+     * Calculates body size from content when HAR doesn't provide it
+     */
+    private calculateBodySizeFromContent(content: any): number {
+        if (!content) return 0;
+
+        const text = content.text;
+        if (!text) return 0;
+
+        // If base64 encoded, calculate decoded size
+        if (content.encoding === 'base64') {
+            // Base64: every 4 chars = 3 bytes (approximately)
+            return Math.floor((text.length * 3) / 4);
+        }
+
+        // For text, use Buffer to get accurate byte size
+        return Buffer.byteLength(text, 'utf8');
+    }
+
+    /**
+     * Calculates post data size from postData object
+     */
+    private calculatePostDataSize(postData: any): number {
+        if (!postData) return 0;
+
+        if (postData.text) {
+            return Buffer.byteLength(postData.text, 'utf8');
+        }
+
+        // If params array exists
+        if (postData.params && Array.isArray(postData.params)) {
+            let size = 0;
+            postData.params.forEach((param: any) => {
+                if (param.name && param.value) {
+                    size += param.name.length + param.value.length + 2; // +2 for "=" and "&"
+                }
+            });
+            return size;
+        }
+
+        return 0;
     }
 
     private calculateTraffic(entries: any[]): PerformanceReport['traffic'] {
@@ -606,26 +672,50 @@ Threshold: ${v.threshold}, Actual: ${v.actual.toFixed(2)}
 
         entries.forEach(entry => {
             // Request (sent)
-            const reqHeadersSize = entry.request?.headersSize;
-            const reqBodySize = entry.request?.bodySize;
+            let reqHeadersSize = entry.request?.headersSize;
+            let reqBodySize = entry.request?.bodySize;
 
+            // Fallback: calculate from headers array only if size is -1 (unknown)
+            if (reqHeadersSize === -1 || reqHeadersSize === undefined) {
+                reqHeadersSize = this.calculateHeadersSizeFromArray(entry.request?.headers);
+            }
             if (reqHeadersSize && reqHeadersSize > 0) {
                 sentHeaders += reqHeadersSize;
+            }
+
+            // Fallback: calculate from postData only if size is -1 (unknown)
+            if (reqBodySize === -1 || reqBodySize === undefined) {
+                reqBodySize = this.calculatePostDataSize(entry.request?.postData);
             }
             if (reqBodySize && reqBodySize > 0) {
                 sentBody += reqBodySize;
             }
 
             // Response (received)
-            const resHeadersSize = entry.response?.headersSize;
-            const resBodySize = entry.response?.bodySize;
-            const resContentSize = entry.response?.content?.size;
+            let resHeadersSize = entry.response?.headersSize;
+            let resBodySize = entry.response?.bodySize;
+            let resContentSize = entry.response?.content?.size;
 
+            // Fallback: calculate from headers array only if size is -1 (unknown)
+            if (resHeadersSize === -1 || resHeadersSize === undefined) {
+                resHeadersSize = this.calculateHeadersSizeFromArray(entry.response?.headers);
+            }
             if (resHeadersSize && resHeadersSize > 0) {
                 receivedHeaders += resHeadersSize;
             }
+
+            // Fallback: calculate from content.text only if size is -1 (unknown)
+            if (resBodySize === -1 || resBodySize === undefined) {
+                resBodySize = this.calculateBodySizeFromContent(entry.response?.content);
+            }
             if (resBodySize && resBodySize > 0) {
                 receivedBody += resBodySize;
+            }
+
+            // For uncompressed size, use content.size or calculate from text
+            if (resContentSize === -1 || resContentSize === undefined) {
+                // If content.size is -1, use the same as body size (we don't know compression)
+                resContentSize = resBodySize;
             }
             if (resContentSize && resContentSize > 0) {
                 receivedBodyUncompressed += resContentSize;

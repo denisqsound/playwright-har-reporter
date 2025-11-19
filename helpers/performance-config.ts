@@ -45,7 +45,7 @@ export const PerformanceConfig = {
         local: {
             harDir: 'test-results/local/har',
             reportDir: 'test-results/local/reports',
-            recordHarMode: 'minimal'       // Minimal mode for local tests
+            recordHarMode: 'full'
         } as PerformanceMonitorConfig,
 
         staging: {
