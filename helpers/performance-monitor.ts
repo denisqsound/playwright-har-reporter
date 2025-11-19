@@ -423,11 +423,6 @@ ${report.summary.failedRequests}
 </div>
 <div class="metric-label">Failed Requests</div>
 </div>
-<div class="metric">
-<div class="metric-value">${(report.summary.totalSize / 1024 /
-            1024).toFixed(2)}MB</div>
-<div class="metric-label">Response Body Size</div>
-</div>
 </div>
 
 ${report.traffic ? `
