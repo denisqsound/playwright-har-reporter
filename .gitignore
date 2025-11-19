@@ -132,3 +132,6 @@ dist
 
 /test-results/
 /playwright-report/
+
+# IDE
+.idea/
