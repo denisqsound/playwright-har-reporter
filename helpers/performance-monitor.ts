@@ -21,12 +21,26 @@ export interface PerformanceReport {
     summary: {
         totalRequests: number;
         totalTime: number;
-        totalSize: number;
+        totalSize: number; // response.bodySize only (backward compatibility)
         failedRequests: number;
         averageResponseTime: number;
         medianResponseTime: number;
         percentile95: number;
         percentile99: number;
+    };
+    traffic?: {
+        sent: {
+            headers: number;
+            body: number;
+            total: number;
+        };
+        received: {
+            headers: number;
+            body: number;
+            total: number;
+            bodyUncompressed?: number; // content.size
+        };
+        totalTransferred: number; // total sent + received
     };
     requestTypes: Record<string, RequestTypeMetrics>;
     performance: {
@@ -325,6 +339,7 @@ export class PerformanceMonitor {
                 this.endTime - this.startTime :
                 this.calculateTestDuration(entries),
             summary: this.calculateSummary(entries),
+            traffic: this.calculateTraffic(entries),
             requestTypes: this.categorizeRequests(entries),
             performance: {
                 slowestRequests: this.getSlowRequests(entries, 10),
@@ -411,8 +426,63 @@ ${report.summary.failedRequests}
 <div class="metric">
 <div class="metric-value">${(report.summary.totalSize / 1024 /
             1024).toFixed(2)}MB</div>
-<div class="metric-label">Total Size</div>
+<div class="metric-label">Response Body Size</div>
 </div>
+</div>
+
+${report.traffic ? `
+<div class="section">
+<h2>Traffic Details</h2>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+<div>
+<h3>⬆️ Sent</h3>
+<div class="metric">
+<div class="metric-value">${(report.traffic.sent.total / 1024).toFixed(2)} KB</div>
+<div class="metric-label">Total Sent</div>
+</div>
+<div class="metric">
+<div class="metric-value">${(report.traffic.sent.headers / 1024).toFixed(2)} KB</div>
+<div class="metric-label">Request Headers</div>
+</div>
+<div class="metric">
+<div class="metric-value">${(report.traffic.sent.body / 1024).toFixed(2)} KB</div>
+<div class="metric-label">Request Body</div>
+</div>
+</div>
+<div>
+<h3>⬇️ Received</h3>
+<div class="metric">
+<div class="metric-value">${(report.traffic.received.total / 1024).toFixed(2)} KB</div>
+<div class="metric-label">Total Received</div>
+</div>
+<div class="metric">
+<div class="metric-value">${(report.traffic.received.headers / 1024).toFixed(2)} KB</div>
+<div class="metric-label">Response Headers</div>
+</div>
+<div class="metric">
+<div class="metric-value">${(report.traffic.received.body / 1024).toFixed(2)} KB</div>
+<div class="metric-label">Response Body (Compressed)</div>
+</div>
+${report.traffic.received.bodyUncompressed ? `
+<div class="metric">
+<div class="metric-value">${(report.traffic.received.bodyUncompressed / 1024).toFixed(2)} KB</div>
+<div class="metric-label">Response Body (Uncompressed)</div>
+</div>
+<div class="metric">
+<div class="metric-value">${((1 - report.traffic.received.body / report.traffic.received.bodyUncompressed) * 100).toFixed(1)}%</div>
+<div class="metric-label">Compression Ratio</div>
+</div>
+` : ''}
+</div>
+</div>
+<div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+<div class="metric">
+<div class="metric-value" style="color: #1976d2;">${(report.traffic.totalTransferred / 1024).toFixed(2)} KB</div>
+<div class="metric-label"><strong>Total Network Traffic</strong></div>
+</div>
+</div>
+</div>
+` : ''}
 </div>
 
 <div class="section">
@@ -524,6 +594,60 @@ Threshold: ${v.threshold}, Actual: ${v.actual.toFixed(2)}
             medianResponseTime: this.calculateMedian(times),
             percentile95: this.calculatePercentile(times, 95),
             percentile99: this.calculatePercentile(times, 99)
+        };
+    }
+
+    private calculateTraffic(entries: any[]): PerformanceReport['traffic'] {
+        let sentHeaders = 0;
+        let sentBody = 0;
+        let receivedHeaders = 0;
+        let receivedBody = 0;
+        let receivedBodyUncompressed = 0;
+
+        entries.forEach(entry => {
+            // Request (sent)
+            const reqHeadersSize = entry.request?.headersSize;
+            const reqBodySize = entry.request?.bodySize;
+
+            if (reqHeadersSize && reqHeadersSize > 0) {
+                sentHeaders += reqHeadersSize;
+            }
+            if (reqBodySize && reqBodySize > 0) {
+                sentBody += reqBodySize;
+            }
+
+            // Response (received)
+            const resHeadersSize = entry.response?.headersSize;
+            const resBodySize = entry.response?.bodySize;
+            const resContentSize = entry.response?.content?.size;
+
+            if (resHeadersSize && resHeadersSize > 0) {
+                receivedHeaders += resHeadersSize;
+            }
+            if (resBodySize && resBodySize > 0) {
+                receivedBody += resBodySize;
+            }
+            if (resContentSize && resContentSize > 0) {
+                receivedBodyUncompressed += resContentSize;
+            }
+        });
+
+        const sentTotal = sentHeaders + sentBody;
+        const receivedTotal = receivedHeaders + receivedBody;
+
+        return {
+            sent: {
+                headers: sentHeaders,
+                body: sentBody,
+                total: sentTotal
+            },
+            received: {
+                headers: receivedHeaders,
+                body: receivedBody,
+                total: receivedTotal,
+                bodyUncompressed: receivedBodyUncompressed
+            },
+            totalTransferred: sentTotal + receivedTotal
         };
     }
 
