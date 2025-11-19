@@ -1,0 +1,19 @@
+{
+  "name": "tmp-playwright",
+  "version": "1.0.0",
+  "description": "Playwright tests with performance monitoring",
+  "scripts": {
+    "test": "playwright test",
+    "test:performance": "playwright test tests/basic-performance.spec.ts",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "report": "playwright show-report"
+  },
+  "private": true,
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "@types/node": "^20.19.25",
+    "playwright": "^1.56.1",
+    "typescript": "^5.0.0"
+  }
+}
