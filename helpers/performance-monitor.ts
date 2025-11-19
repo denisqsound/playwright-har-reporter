@@ -435,7 +435,7 @@ ${report.traffic ? `
 <h2>Traffic Details</h2>
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
 <div>
-<h3>⬆️ Sent</h3>
+<h3>↑ Sent</h3>
 <div class="metric">
 <div class="metric-value">${(report.traffic.sent.total / 1024).toFixed(2)} KB</div>
 <div class="metric-label">Total Sent</div>
@@ -450,7 +450,7 @@ ${report.traffic ? `
 </div>
 </div>
 <div>
-<h3>⬇️ Received</h3>
+<h3>↓ Received</h3>
 <div class="metric">
 <div class="metric-value">${(report.traffic.received.total / 1024).toFixed(2)} KB</div>
 <div class="metric-label">Total Received</div>
