@@ -514,7 +514,11 @@ Threshold: ${v.threshold}, Actual: ${v.actual.toFixed(2)}
         return {
             totalRequests: entries.length,
             totalTime: totalTime,
-            totalSize: entries.reduce((sum, e) => sum + (e.response?.bodySize || 0), 0),
+            totalSize: entries.reduce((sum, e) => {
+                const size = e.response?.bodySize;
+                // Ignore negative values (-1 means "unknown" in HAR spec)
+                return sum + (size && size > 0 ? size : 0);
+            }, 0),
             failedRequests: entries.filter(e => e.response?.status >= 400).length,
             averageResponseTime: entries.length > 0 ? totalTime / entries.length : 0,
             medianResponseTime: this.calculateMedian(times),
@@ -594,7 +598,8 @@ Threshold: ${v.threshold}, Actual: ${v.actual.toFixed(2)}
 
             categories[category].count++;
             categories[category].totalTime += entry.time || 0;
-            categories[category].totalSize += entry.response?.bodySize || 0;
+            const bodySize = entry.response?.bodySize;
+            categories[category].totalSize += (bodySize && bodySize > 0) ? bodySize : 0;
         });
 
 // Calculate averages
